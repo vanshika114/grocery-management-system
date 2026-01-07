@@ -11,8 +11,9 @@ This project helps manage grocery items, inventory, and billing from two perspec
 Admins can perform the following operations:
 1. Add a new product
 2. Update the price of an existing product
-3. Delete a product
-4. Exit the system
+3. Update the quantity of an existing product
+4. Delete a product
+5. Exit the system
 
 ---
 
