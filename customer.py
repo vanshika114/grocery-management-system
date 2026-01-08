@@ -40,3 +40,13 @@ def update_item_qty():
     else:
         cart[item][1] = qty 
     print("Updated Cart ----> ", cart)
+
+# ---- view total price ---- 
+def view_tp():
+    print("cart ---->", cart)
+    l = []
+    for item in cart:
+        val = (cart[item][0] * cart[item][1])
+        l.append(val)
+    tp = sum(l)
+    print("Total Price = ", tp)
