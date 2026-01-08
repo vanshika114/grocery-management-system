@@ -5,7 +5,10 @@ def add_items():
     while True:
         item = input("Enter item to be added in cart: ")
         qty = int(input("Enter quantity of item: "))
-        cart[item] = [prod[item][0],qty]
+        if qty > prod[item][1]:
+            cart[item] = [prod[item][0],prod[item][1]] 
+        else: 
+            cart[item] = [prod[item][0],qty]
         ch = input("Continue? Y/N ")
         if ch.lower() == 'n':
             break
