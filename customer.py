@@ -28,3 +28,15 @@ def delete_item():
         if ch.lower() == 'n':
             break
     print("Updated Cart --->", cart)
+
+
+# ---- update item quantity ---- 
+def update_item_qty():
+    print("cart ---> ", cart)
+    item = input("Enter product name: ")
+    qty = int(input("Enter updated quantity: "))
+    if qty == 0:
+        del cart[item]
+    else:
+        cart[item][1] = qty 
+    print("Updated Cart ----> ", cart)
