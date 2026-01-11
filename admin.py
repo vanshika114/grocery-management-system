@@ -1,46 +1,69 @@
-#------ add a product into grocery store -----
+# shared inventory
+prod = {}
+
 
 def add_prod():
-    item = input("Enter product name: ")
-    if item not in prod:
-        pr = int(input("Enter price: "))
-        qty = int(input("Enter quantity: "))
-        l = [pr,qty]
-        prod[item] = l 
-        print("Item added successfully!","updated products", prod)
-    else:
-        print("Item exists")
-        
+    item = input("Enter product name: ").lower()
+    if item in prod:
+        print("❌ Item already exists")
+        return
 
-#----- update price of an existing product ----
+    price = int(input("Enter price: "))
+    qty = int(input("Enter quantity: "))
+    prod[item] = [price, qty]
+    print("✅ Product added successfully")
+
 
 def update_price():
     item = input("Enter product name: ").lower()
-    if item in prod:
-        pr = int(input("Enter updated price of product: "))
-        prod[item][0] = pr
-        print("updated successfully!","updated products",prod)
-    else:
-        print("product does not exist")
+    if item not in prod:
+        print("❌ Product does not exist")
+        return
 
-
-#---- update quantity of an existing product ----
+    price = int(input("Enter new price: "))
+    prod[item][0] = price
+    print("✅ Price updated")
 
 def update_qty():
     item = input("Enter product name: ").lower()
-    if item in prod:
-        qty = int(input("Enter updated quantity of product: "))
-        prod[item][1] = qty
-        print("updated successfully!","updated products",prod)
-    else:
-        print("product does not exist")
+    if item not in prod:
+        print("❌ Product does not exist")
+        return
 
-#---- delete an existing product ----- 
+    qty = int(input("Enter new quantity: "))
+    prod[item][1] = qty
+    print("✅ Quantity updated")
+
 
 def delete_item():
     item = input("Enter product name: ").lower()
     if item in prod:
         del prod[item]
-        print("deleted successfully!","updated products",prod)
+        print("✅ Product deleted")
     else:
-        print("product does not exist")
+        print("❌ Product does not exist")
+
+
+def admin_menu():
+    while True:
+        print("--- Admin Menu ---")
+        print("1. Add product")
+        print("2. Update price")
+        print("3. Update quantity")
+        print("4. Delete product")
+        print("5. Exit")
+
+        ch = int(input("Enter choice: "))
+
+        if ch == 1:
+            add_prod()
+        elif ch == 2:
+            update_price()
+        elif ch == 3:
+            update_qty()
+        elif ch == 4:
+            delete_item()
+        elif ch == 5:
+            break
+        else:
+            print("Invalid choice")
