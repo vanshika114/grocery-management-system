@@ -60,6 +60,32 @@ export default function App() {
   const [showArchived, setShowArchived] = useState(false);
   const [actionToast, setActionToast] = useState(null); // { message, type: 'success'|'error' }
   const [selectedReviewProduct, setSelectedReviewProduct] = useState(null);
+  
+  const [adminToken, setAdminToken] = useState(localStorage.getItem('adminToken') || null);
+  const [adminUsername, setAdminUsername] = useState('admin');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+
+  const handleAdminLogin = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${API_URL}/admin/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: adminUsername, password: adminPassword })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAdminToken(data.token);
+        localStorage.setItem('adminToken', data.token);
+        setLoginError('');
+      } else {
+        setLoginError(data.message);
+      }
+    } catch (err) {
+      setLoginError('Network error');
+    }
+  };
 
   const loadData = async (showSkeleton = false) => {
     if (showSkeleton) setIsLoading(true);
@@ -77,8 +103,12 @@ export default function App() {
       const ordersRes = await fetch(`${API_URL}/orders`);
       if (ordersRes.ok) setOrders(await ordersRes.json());
 
-      const archivedRes = await fetch(`${API_URL}/products/archived`);
-      if (archivedRes.ok) setArchivedProducts(await archivedRes.json());
+      if (adminToken) {
+        const archivedRes = await fetch(`${API_URL}/products/archived`, {
+          headers: { 'Authorization': `Bearer ${adminToken}` }
+        });
+        if (archivedRes.ok) setArchivedProducts(await archivedRes.json());
+      }
     } catch (e) {
       console.error('API Error:', e);
     } finally {
@@ -92,8 +122,11 @@ export default function App() {
   };
 
   const loadAnalytics = async () => {
+    if (!adminToken) return;
     try {
-      const res = await fetch(`${API_URL}/admin/analytics`);
+      const res = await fetch(`${API_URL}/admin/analytics`, {
+        headers: { 'Authorization': `Bearer ${adminToken}` }
+      });
       if (res.ok) setAnalyticsData(await res.json());
     } catch (e) {
       console.error('Analytics API Error:', e);
@@ -157,7 +190,7 @@ export default function App() {
     try {
       const res = await fetch(`${API_URL}/products`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Admin-Password': 'admin123' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
         body: JSON.stringify({ item: newItem, price: parseFloat(newPrice), qty: parseInt(newQty), category: newCategory, image_url: newImageUrl })
       });
       const data = await res.json();
@@ -174,7 +207,7 @@ export default function App() {
   const updateProductPrice = async (item, price) => {
     await fetch(`${API_URL}/products/${item}/price`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Password': 'admin123' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
       body: JSON.stringify({ price: parseFloat(price) })
     });
     await loadData();
@@ -183,7 +216,7 @@ export default function App() {
   const updateProductQty = async (item, qty) => {
     await fetch(`${API_URL}/products/${item}/qty`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Password': 'admin123' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
       body: JSON.stringify({ qty: parseInt(qty) })
     });
     await loadData();
@@ -193,7 +226,7 @@ export default function App() {
   const deleteProduct = async (item) => {
     const res = await fetch(`${API_URL}/products/${item}`, {
       method: 'DELETE',
-      headers: { 'X-Admin-Password': 'admin123' }
+      headers: { 'Authorization': `Bearer ${adminToken}` }
     });
     const data = await res.json();
     showToast(data.message, data.success ? 'success' : 'error');
@@ -203,7 +236,7 @@ export default function App() {
   const restoreProduct = async (item) => {
     const res = await fetch(`${API_URL}/products/${item}/restore`, {
       method: 'POST',
-      headers: { 'X-Admin-Password': 'admin123' }
+      headers: { 'Authorization': `Bearer ${adminToken}` }
     });
     const data = await res.json();
     showToast(data.message, data.success ? 'success' : 'error');
@@ -214,7 +247,7 @@ export default function App() {
     if (!window.confirm(`⚠️ Permanently delete "${item}"? This cannot be undone.`)) return;
     const res = await fetch(`${API_URL}/products/${item}/permanent`, {
       method: 'DELETE',
-      headers: { 'X-Admin-Password': 'admin123' }
+      headers: { 'Authorization': `Bearer ${adminToken}` }
     });
     const data = await res.json();
     showToast(data.message, data.success ? 'success' : 'error');
@@ -511,9 +544,55 @@ export default function App() {
           </>
         )}
 
+        {/* Admin Dashboard */}
         {view === 'admin' && (
           <div className="max-w-5xl mx-auto space-y-8">
-            
+            {!adminToken ? (
+              <div className="max-w-md mx-auto bg-white/60 dark:bg-slate-900/60 border border-slate-200/50 dark:border-slate-700/50 backdrop-blur-xl rounded-3xl p-8 shadow-sm text-center">
+                <Store className="w-12 h-12 text-violet-500 mx-auto mb-4" />
+                <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-6">Admin Login</h2>
+                <form onSubmit={handleAdminLogin} className="space-y-4">
+                  <Input 
+                    type="text" 
+                    placeholder="Username" 
+                    value={adminUsername} 
+                    onChange={e => setAdminUsername(e.target.value)} 
+                    className="h-12 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
+                  />
+                  <Input 
+                    type="password" 
+                    placeholder="Password" 
+                    value={adminPassword} 
+                    onChange={e => setAdminPassword(e.target.value)} 
+                    className="h-12 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
+                  />
+                  {loginError && <p className="text-red-500 text-sm">{loginError}</p>}
+                  <Button type="submit" className="w-full h-12 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold">
+                    Sign In
+                  </Button>
+                </form>
+              </div>
+            ) : (
+            <>
+              <div className="flex justify-between items-center bg-white/60 dark:bg-slate-900/60 border border-slate-200/50 dark:border-slate-700/50 backdrop-blur-xl p-6 rounded-3xl shadow-sm mb-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-violet-100 dark:bg-violet-900/50 rounded-2xl">
+                    <Store className="w-6 h-6 text-violet-600 dark:text-violet-400" />
+                  </div>
+                  <div>
+                    <h1 className="text-2xl font-bold bg-gradient-to-r from-violet-600 to-fuchsia-600 bg-clip-text text-transparent">Admin Dashboard</h1>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mt-1">Manage products, orders, and analytics</p>
+                  </div>
+                </div>
+                <Button 
+                  onClick={() => { setAdminToken(null); localStorage.removeItem('adminToken'); }}
+                  variant="outline" 
+                  className="rounded-xl border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300"
+                >
+                  Logout
+                </Button>
+              </div>
+
             {/* Add Product Panel */}
             <div className="bg-white/60 dark:bg-slate-900/60 border border-slate-200/50 dark:border-slate-700/50 backdrop-blur-xl rounded-3xl p-8 shadow-sm">
               <div className="flex items-center gap-3 mb-7">
@@ -784,7 +863,8 @@ export default function App() {
                 </Table>
               </div>
             </div>
-
+            </>
+            )}
           </div>
         )}
       </div>

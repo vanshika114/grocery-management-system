@@ -1,260 +1,178 @@
-# admin.py
-# Admin-side business logic using SQLite database queries
-
-import database
+from models import db, Product, Order, OrderItem
+from sqlalchemy.sql import func
+import hashlib
+from datetime import datetime, timedelta
 
 def add_product(item, price, quantity, category="Other", image_url=""):
-    """
-    Adds a new product to the inventory database.
-    """
     item = item.strip().lower()
     if price < 0:
         return False, "Price cannot be negative"
     if quantity < 0:
         return False, "Quantity cannot be negative"
     try:
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM products WHERE name = ?", (item,))
-        if cursor.fetchone():
-            conn.close()
+        existing = Product.query.filter_by(name=item).first()
+        if existing:
             return False, "Item already exists"
-        cursor.execute(
-            "INSERT INTO products (name, price, quantity, category, image_url) VALUES (?, ?, ?, ?, ?)",
-            (item, price, quantity, category, image_url)
-        )
-        conn.commit()
-        conn.close()
+        
+        prod = Product(name=item, price=price, quantity=quantity, category=category, image_url=image_url)
+        db.session.add(prod)
+        db.session.commit()
         return True, "Item added successfully!"
     except Exception as e:
+        db.session.rollback()
         return False, f"Database error: {e}"
 
 def update_price(item, price):
-    """
-    Updates the price of an existing product in the inventory.
-    """
     if price < 0:
         return False, "Price cannot be negative"
     item = item.strip().lower()
     try:
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM products WHERE name = ?", (item,))
-        if not cursor.fetchone():
-            conn.close()
+        prod = Product.query.filter_by(name=item).first()
+        if not prod:
             return False, "Product does not exist"
-        cursor.execute("UPDATE products SET price = ? WHERE name = ?", (price, item))
-        conn.commit()
-        conn.close()
+        prod.price = price
+        db.session.commit()
         return True, "Price updated successfully!"
     except Exception as e:
+        db.session.rollback()
         return False, f"Database error: {e}"
 
 def update_quantity(item, quantity):
-    """
-    Updates the stock quantity of an existing product in the inventory.
-    """
     if quantity < 0:
         return False, "Quantity cannot be negative"
     item = item.strip().lower()
     try:
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM products WHERE name = ?", (item,))
-        if not cursor.fetchone():
-            conn.close()
+        prod = Product.query.filter_by(name=item).first()
+        if not prod:
             return False, "Product does not exist"
-        cursor.execute("UPDATE products SET quantity = ? WHERE name = ?", (quantity, item))
-        conn.commit()
-        conn.close()
+        prod.quantity = quantity
+        db.session.commit()
         return True, "Quantity updated successfully!"
     except Exception as e:
+        db.session.rollback()
         return False, f"Database error: {e}"
 
 def archive_product(item):
-    """
-    Archives a product by setting its archived flag to 1 (soft-delete).
-    Archived products are hidden from the active inventory and the customer shop,
-    but their data is preserved and can be restored at any time.
-    """
     item = item.strip().lower()
     try:
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, archived FROM products WHERE name = ?", (item,))
-        row = cursor.fetchone()
-        if not row:
-            conn.close()
+        prod = Product.query.filter_by(name=item).first()
+        if not prod:
             return False, "Product does not exist"
-        if row['archived'] == 1:
-            conn.close()
+        if prod.archived == 1:
             return False, "Product is already archived"
-        cursor.execute("UPDATE products SET archived = 1 WHERE name = ?", (item,))
-        conn.commit()
-        conn.close()
+        prod.archived = 1
+        db.session.commit()
         return True, "Product archived successfully!"
     except Exception as e:
+        db.session.rollback()
         return False, f"Database error: {e}"
 
 def restore_product(item):
-    """
-    Restores an archived product by setting its archived flag back to 0.
-    The product will reappear in the active inventory and the customer shop.
-    """
     item = item.strip().lower()
     try:
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, archived FROM products WHERE name = ?", (item,))
-        row = cursor.fetchone()
-        if not row:
-            conn.close()
+        prod = Product.query.filter_by(name=item).first()
+        if not prod:
             return False, "Product does not exist"
-        if row['archived'] == 0:
-            conn.close()
+        if prod.archived == 0:
             return False, "Product is not archived"
-        cursor.execute("UPDATE products SET archived = 0 WHERE name = ?", (item,))
-        conn.commit()
-        conn.close()
+        prod.archived = 0
+        db.session.commit()
         return True, "Product restored successfully!"
     except Exception as e:
+        db.session.rollback()
         return False, f"Database error: {e}"
 
 def permanently_delete_product(item):
-    """
-    Permanently deletes a product from the database.
-    Only works on products that are already archived as a safety guard.
-    This action is irreversible.
-    """
     item = item.strip().lower()
     try:
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, archived FROM products WHERE name = ?", (item,))
-        row = cursor.fetchone()
-        if not row:
-            conn.close()
+        prod = Product.query.filter_by(name=item).first()
+        if not prod:
             return False, "Product does not exist"
-        if row['archived'] == 0:
-            conn.close()
+        if prod.archived == 0:
             return False, "Product must be archived before it can be permanently deleted"
-        pid = row['id']
-        cursor.execute("DELETE FROM products WHERE id = ?", (pid,))
-        conn.commit()
-        conn.close()
+        db.session.delete(prod)
+        db.session.commit()
         return True, "Product permanently deleted!"
     except Exception as e:
+        db.session.rollback()
         return False, f"Database error: {e}"
 
 def get_low_stock_alerts(threshold=5):
-    """
-    Scans the inventory database and returns products with stock below threshold.
-    """
     try:
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT name, price, quantity, category FROM products WHERE quantity < ? AND archived = 0", (threshold,))
         alerts = {}
-        for row in cursor.fetchall():
-            alerts[row['name']] = {
-                "price": row['price'],
-                "quantity": row['quantity'],
-                "category": row['category'],
-                "status": "Out of Stock" if row['quantity'] == 0 else "Low Stock"
+        products = Product.query.filter(Product.quantity < threshold, Product.archived == 0).all()
+        for p in products:
+            alerts[p.name] = {
+                "price": p.price,
+                "quantity": p.quantity,
+                "category": p.category,
+                "status": "Out of Stock" if p.quantity == 0 else "Low Stock"
             }
-        conn.close()
         return alerts
     except Exception as e:
         print(f"Database error in get_low_stock_alerts: {e}")
         return {}
 
-def verify_admin_login(input_password):
-    """
-    Verifies admin password using a secure SHA-256 hash check.
-    """
+def verify_admin_login(username, input_password):
+    from models import User
     import hashlib
-    correct_password = "admin123"
-    stored_hash = hashlib.sha256(correct_password.encode('utf-8')).hexdigest()
+    user = User.query.filter_by(username=username, is_admin=True).first()
+    if not user:
+        return False
     input_hash = hashlib.sha256(input_password.strip().encode('utf-8')).hexdigest()
-    return input_hash == stored_hash
+    return input_hash == user.password_hash
 
 def get_sales_analytics():
-    """
-    Compiles sales analytics including:
-    - Total orders and total revenue
-    - Best-selling products
-    - Revenue by category (dict)
-    - revenue_last_7_days: [{date, revenue}] for the last 7 calendar days
-    - quantity_by_category: [{category, quantity}] for pie chart
-    """
-    from datetime import datetime, timedelta
-
     try:
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
+        total_revenue = db.session.query(func.sum(Order.total)).scalar() or 0.0
+        total_orders = db.session.query(func.count(Order.id)).scalar() or 0
 
-        # 1. Total orders and total revenue
-        cursor.execute("SELECT SUM(total), COUNT(id) FROM orders")
-        row = cursor.fetchone()
-        total_revenue = row[0] if row[0] is not None else 0.0
-        total_orders = row[1] if row[1] is not None else 0
+        # Best sellers
+        best_sellers_query = db.session.query(Product.name, func.sum(OrderItem.quantity).label('qty_sold')) \
+            .join(OrderItem, Product.id == OrderItem.product_id) \
+            .group_by(Product.id) \
+            .order_by(func.sum(OrderItem.quantity).desc()).all()
+        best_sellers = [{"item": name, "quantity_sold": qty} for name, qty in best_sellers_query]
 
-        # 2. Popular items (best sellers)
-        cursor.execute("""
-            SELECT p.name, SUM(oi.quantity) as qty_sold
-            FROM order_items oi
-            JOIN products p ON oi.product_id = p.id
-            GROUP BY oi.product_id
-            ORDER BY qty_sold DESC
-        """)
-        best_sellers = [{"item": row['name'], "quantity_sold": row['qty_sold']} for row in cursor.fetchall()]
+        # Category revenue
+        cat_rev_query = db.session.query(Product.category, func.sum(OrderItem.quantity * Product.price)) \
+            .join(OrderItem, Product.id == OrderItem.product_id) \
+            .group_by(Product.category).all()
+        category_revenue = {cat: round(rev, 2) for cat, rev in cat_rev_query}
 
-        # 3. Category revenue breakdown
-        cursor.execute("""
-            SELECT p.category, SUM(oi.quantity * p.price) as cat_revenue
-            FROM order_items oi
-            JOIN products p ON oi.product_id = p.id
-            GROUP BY p.category
-        """)
-        category_revenue = {row['category']: round(row['cat_revenue'], 2) for row in cursor.fetchall()}
-
-        # 4. Revenue per day for the last 7 days (for Line Chart)
-        # Orders store timestamps as ISO strings; extract the date portion for grouping.
-        cursor.execute("""
-            SELECT substr(timestamp, 1, 10) as order_date, SUM(total) as daily_revenue
-            FROM orders
-            WHERE timestamp >= date('now', '-6 days')
-            GROUP BY order_date
-            ORDER BY order_date ASC
-        """)
-        daily_rows = {row['order_date']: round(row['daily_revenue'], 2) for row in cursor.fetchall()}
-
-        # Build a complete 7-day list, filling zeros for missing days
+        # Revenue last 7 days
         today = datetime.utcnow().date()
+        start_date = today - timedelta(days=6)
+        daily_rows = {}
+        
+        # Sqlite timestamp format varies, simplest is to process in python for a small dataset
+        recent_orders = Order.query.all()
+        for o in recent_orders:
+            o_date_str = o.timestamp[:10]
+            try:
+                o_date = datetime.strptime(o_date_str, "%Y-%m-%d").date()
+                if o_date >= start_date:
+                    daily_rows[o_date_str] = daily_rows.get(o_date_str, 0.0) + o.total
+            except ValueError:
+                pass # ignore poorly formatted timestamps
+
         revenue_last_7_days = []
         for i in range(6, -1, -1):
             day = today - timedelta(days=i)
-            day_str = day.isoformat()          # "YYYY-MM-DD"
-            label = day.strftime("%b %d")       # "Jul 22" — readable X-axis label
+            day_str = day.isoformat()
+            label = day.strftime("%b %d")
             revenue_last_7_days.append({
                 "date": label,
-                "revenue": daily_rows.get(day_str, 0.0)
+                "revenue": round(daily_rows.get(day_str, 0.0), 2)
             })
 
-        # 5. Total quantity sold per category (for Pie Chart)
-        cursor.execute("""
-            SELECT p.category, SUM(oi.quantity) as qty_sold
-            FROM order_items oi
-            JOIN products p ON oi.product_id = p.id
-            GROUP BY p.category
-            ORDER BY qty_sold DESC
-        """)
-        quantity_by_category = [
-            {"category": row['category'], "quantity": row['qty_sold']}
-            for row in cursor.fetchall()
-        ]
+        # Quantity by category
+        qty_cat_query = db.session.query(Product.category, func.sum(OrderItem.quantity)) \
+            .join(OrderItem, Product.id == OrderItem.product_id) \
+            .group_by(Product.category) \
+            .order_by(func.sum(OrderItem.quantity).desc()).all()
+        quantity_by_category = [{"category": cat, "quantity": qty} for cat, qty in qty_cat_query]
 
-        conn.close()
         return {
             "total_revenue": round(total_revenue, 2),
             "total_orders": total_orders,

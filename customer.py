@@ -1,206 +1,139 @@
-# customer.py
-# Customer-side business logic using SQLite database queries
-
-import database
+from models import db, Product, CartItem, Order, OrderItem, Review
 import time
 import uuid
 import os
 
 def get_cart():
-    """
-    Retrieves all items currently in the cart.
-    """
     try:
-        return database.get_cart()
+        from database import get_cart as db_get_cart
+        return db_get_cart()
     except Exception as e:
         print(f"Database error in get_cart: {e}")
         return {}
 
 def add_item(item, quantity):
-    """
-    Adds a specified quantity of a product to the cart.
-    """
     if quantity <= 0:
         return False, "Quantity must be greater than zero"
     item = item.strip().lower()
     try:
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
-
-        # Check product existence and available stock
-        cursor.execute("SELECT id, price, quantity FROM products WHERE name = ? AND archived = 0", (item,))
-        prod = cursor.fetchone()
+        prod = Product.query.filter_by(name=item, archived=0).first()
         if not prod:
-            conn.close()
             return False, "Product does not exist in inventory"
 
-        pid = prod['id']
-        available_stock = prod['quantity']
+        available_stock = prod.quantity
 
-        # Check current cart quantity
-        cursor.execute("SELECT quantity FROM cart WHERE product_id = ?", (pid,))
-        cart_row = cursor.fetchone()
-        current_cart_qty = cart_row['quantity'] if cart_row else 0
+        cart_row = CartItem.query.filter_by(product_id=prod.id).first()
+        current_cart_qty = cart_row.quantity if cart_row else 0
 
         if current_cart_qty + quantity > available_stock:
-            conn.close()
             return False, f"Cannot add quantity. Only {available_stock} items available in stock, and you have {current_cart_qty} in your cart."
 
         if cart_row:
-            cursor.execute("UPDATE cart SET quantity = quantity + ? WHERE product_id = ?", (quantity, pid))
+            cart_row.quantity += quantity
         else:
-            cursor.execute("INSERT INTO cart (product_id, quantity) VALUES (?, ?)", (pid, quantity))
+            new_cart_item = CartItem(product_id=prod.id, quantity=quantity)
+            db.session.add(new_cart_item)
 
-        conn.commit()
-        conn.close()
+        db.session.commit()
         return True, "Added to cart"
     except Exception as e:
+        db.session.rollback()
         return False, f"Database error in add_item: {e}"
 
 def delete_item(item):
-    """
-    Deletes a product completely from the cart.
-    """
     item = item.strip().lower()
     try:
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM products WHERE name = ?", (item,))
-        prod = cursor.fetchone()
+        prod = Product.query.filter_by(name=item).first()
         if not prod:
-            conn.close()
             return False, "Product not in cart"
-        pid = prod['id']
-
-        cursor.execute("SELECT quantity FROM cart WHERE product_id = ?", (pid,))
-        if not cursor.fetchone():
-            conn.close()
+        
+        cart_row = CartItem.query.filter_by(product_id=prod.id).first()
+        if not cart_row:
             return False, "Product not in cart"
 
-        cursor.execute("DELETE FROM cart WHERE product_id = ?", (pid,))
-        conn.commit()
-        conn.close()
+        db.session.delete(cart_row)
+        db.session.commit()
         return True, "Deleted from cart"
     except Exception as e:
+        db.session.rollback()
         return False, f"Database error in delete_item: {e}"
 
 def update_item_qty(item, quantity):
-    """
-    Updates the quantity of a product in the cart.
-    Removes the item if quantity drops to 0 or below.
-    """
     item = item.strip().lower()
     try:
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, quantity FROM products WHERE name = ?", (item,))
-        prod = cursor.fetchone()
+        prod = Product.query.filter_by(name=item).first()
         if not prod:
-            conn.close()
             return False, "Item not in cart"
-        pid = prod['id']
-        available_stock = prod['quantity']
-
-        cursor.execute("SELECT quantity FROM cart WHERE product_id = ?", (pid,))
-        cart_row = cursor.fetchone()
+        
+        available_stock = prod.quantity
+        cart_row = CartItem.query.filter_by(product_id=prod.id).first()
         if not cart_row:
-            conn.close()
             return False, "Item not in cart"
 
         if quantity <= 0:
-            cursor.execute("DELETE FROM cart WHERE product_id = ?", (pid,))
-            conn.commit()
-            conn.close()
+            db.session.delete(cart_row)
+            db.session.commit()
             return True, f"Removed '{item}' from cart."
 
-        # Check stock bounds
         if quantity > available_stock:
-            conn.close()
             return False, f"Cannot update quantity. Only {available_stock} items available in stock."
 
-        cursor.execute("UPDATE cart SET quantity = ? WHERE product_id = ?", (quantity, pid))
-        conn.commit()
-        conn.close()
+        cart_row.quantity = quantity
+        db.session.commit()
         return True, f"Updated '{item}' quantity to {quantity}."
     except Exception as e:
+        db.session.rollback()
         return False, f"Database error in update_item_qty: {e}"
 
 def view_total_price():
-    """
-    Computes total price of items currently in the cart.
-    """
     try:
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT SUM(c.quantity * p.price)
-            FROM cart c
-            JOIN products p ON c.product_id = p.id
-        """)
-        row = cursor.fetchone()
-        total = row[0] if row[0] is not None else 0.0
-        conn.close()
+        cart_items = CartItem.query.all()
+        total = sum(c.quantity * c.product.price for c in cart_items)
         return total
     except Exception as e:
         print(f"Database error in view_total_price: {e}")
         return 0.0
 
 def checkout():
-    """
-    Performs checkout: validates inventory, deducts stock, creates orders, and clears cart.
-    """
     try:
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
-
-        # Fetch cart items with product details
-        cursor.execute("""
-            SELECT c.product_id, c.quantity, p.name, p.price, p.quantity as stock
-            FROM cart c
-            JOIN products p ON c.product_id = p.id
-        """)
-        cart_items = cursor.fetchall()
+        cart_items = CartItem.query.all()
         if not cart_items:
-            conn.close()
             return False, "Cart is empty"
 
-        # Stock verification check
         unavailable_items = []
-        for item in cart_items:
-            if item['stock'] < item['quantity']:
-                unavailable_items.append(item['name'])
+        for c in cart_items:
+            if c.product.quantity < c.quantity:
+                unavailable_items.append(c.product.name)
 
         if unavailable_items:
-            conn.close()
             return False, f"Checkout failed. The following items went out of stock or have insufficient inventory: {', '.join(unavailable_items)}. Please adjust your cart."
 
-        # Insert orders, order items, and deduct stock
         total = 0.0
         items_list = []
         order_id = str(uuid.uuid4())[:8].upper()
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-
-        for item in cart_items:
-            item_total = item['price'] * item['quantity']
-            total += item_total
-            # Deduct stock
-            cursor.execute("UPDATE products SET quantity = quantity - ? WHERE id = ?", (item['quantity'], item['product_id']))
-            # Add to receipt items
-            items_list.append({"item": item['name'], "price": item['price'], "qty": item['quantity']})
-
-        # Insert Order
-        cursor.execute("INSERT INTO orders (id, timestamp, total) VALUES (?, ?, ?)", (order_id, timestamp, total))
-
-        # Insert Order Items
-        for item in cart_items:
-            cursor.execute("INSERT INTO order_items (order_id, product_id, quantity) VALUES (?, ?, ?)", (order_id, item['product_id'], item['quantity']))
-
-        # Clear Cart
-        cursor.execute("DELETE FROM cart")
         
-        #Complete the checkout transaction after clearing the cart.
-        conn.commit()
-        conn.close()
+        new_order = Order(id=order_id, timestamp=timestamp, total=0.0) # will update total
+        db.session.add(new_order)
+
+        checked_out_items = []
+
+        for c in cart_items:
+            item_total = c.product.price * c.quantity
+            total += item_total
+            
+            c.product.quantity -= c.quantity
+            
+            items_list.append({"item": c.product.name, "price": c.product.price, "qty": c.quantity})
+            checked_out_items.append({"product_name": c.product.name, "remaining_qty": c.product.quantity})
+            
+            order_item = OrderItem(order_id=order_id, product_id=c.product_id, quantity=c.quantity)
+            db.session.add(order_item)
+            
+            db.session.delete(c)
+
+        new_order.total = total
+        db.session.commit()
 
         order = {
             "id": order_id,
@@ -209,52 +142,35 @@ def checkout():
             "total": total
         }
         receipt_path = generate_receipt_file(order)
-        return True, f"Checkout successful! Invoice generated at {receipt_path}. Total: Rs.{order['total']}"
+        return True, f"Checkout successful! Invoice generated at {receipt_path}. Total: Rs.{order['total']}", checked_out_items
 
     except Exception as e:
+        db.session.rollback()
         return False, f"Database error during checkout: {e}"
 
 def search_and_filter_products(query_name=None, min_price=None, max_price=None, category=None):
-    """
-    Searches and filters products using SQLite query parameters.
-    """
     try:
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
-
-        query = "SELECT name, price, quantity, category, image_url FROM products WHERE 1=1 AND archived = 0"
-        params = []
-
+        query = Product.query.filter_by(archived=0)
+        
         if query_name:
-            query += " AND name LIKE ?"
-            params.append(f"%{query_name.lower()}%")
+            query = query.filter(Product.name.ilike(f"%{query_name.lower()}%"))
         if min_price is not None:
-            query += " AND price >= ?"
-            params.append(min_price)
+            query = query.filter(Product.price >= min_price)
         if max_price is not None:
-            query += " AND price <= ?"
-            params.append(max_price)
+            query = query.filter(Product.price <= max_price)
         if category:
-            query += " AND category = ?"
-            params.append(category)
+            query = query.filter(Product.category == category)
 
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-
+        rows = query.all()
         results = {}
         for row in rows:
-            results[row['name']] = [row['price'], row['quantity'], row['category'], row['image_url']]
-        conn.close()
+            results[row.name] = [row.price, row.quantity, row.category, row.image_url]
         return results
     except Exception as e:
         print(f"Database error in search_and_filter_products: {e}")
         return {}
 
 def generate_receipt_file(order):
-    """
-    Generates a clean, beautifully aligned text-based invoice.
-    Saves it to disk under the 'receipts/' folder for secure record-keeping.
-    """
     os.makedirs("receipts", exist_ok=True)
     filename = f"receipts/receipt_{order['id']}.txt"
 
@@ -272,11 +188,9 @@ def generate_receipt_file(order):
             name = item["item"].strip().capitalize()
             if len(name) > 16:
                 name = name[:13] + "..."
-
             qty = item["qty"]
             price = item["price"]
             item_total = price * qty
-
             f.write(f"{name:<18} {qty:<5} Rs.{price:<5.2f} Rs.{item_total:<6.2f}\n")
 
         f.write("-----------------------------------------\n")
@@ -284,62 +198,38 @@ def generate_receipt_file(order):
         f.write("=========================================\n")
         f.write("        Thank you for shopping with us!   \n")
         f.write("=========================================\n")
-
     return filename
 
 def add_review(item, rating, review_text, customer_name="Anonymous"):
-    """
-    Adds a review for a product.
-    """
     item = item.strip().lower()
     try:
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM products WHERE name = ? AND archived = 0", (item,))
-        prod = cursor.fetchone()
+        prod = Product.query.filter_by(name=item, archived=0).first()
         if not prod:
-            conn.close()
             return False, "Product does not exist"
         
-        pid = prod['id']
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-        cursor.execute(
-            "INSERT INTO reviews (product_id, rating, review_text, customer_name, timestamp) VALUES (?, ?, ?, ?, ?)",
-            (pid, rating, review_text, customer_name, timestamp)
-        )
-        conn.commit()
-        conn.close()
+        new_review = Review(product_id=prod.id, rating=rating, review_text=review_text, customer_name=customer_name, timestamp=timestamp)
+        db.session.add(new_review)
+        db.session.commit()
         return True, "Review added successfully"
     except Exception as e:
+        db.session.rollback()
         return False, f"Database error in add_review: {e}"
 
 def get_reviews(item):
-    """
-    Gets all reviews for a product.
-    """
     item = item.strip().lower()
     try:
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM products WHERE name = ? AND archived = 0", (item,))
-        prod = cursor.fetchone()
+        prod = Product.query.filter_by(name=item, archived=0).first()
         if not prod:
-            conn.close()
             return []
         
-        pid = prod['id']
-        cursor.execute("SELECT rating, review_text, customer_name, timestamp FROM reviews WHERE product_id = ? ORDER BY timestamp DESC", (pid,))
-        rows = cursor.fetchall()
-        reviews = []
-        for row in rows:
-            reviews.append({
-                "rating": row['rating'],
-                "review_text": row['review_text'],
-                "customer_name": row['customer_name'],
-                "timestamp": row['timestamp']
-            })
-        conn.close()
-        return reviews
+        reviews = Review.query.filter_by(product_id=prod.id).order_by(Review.timestamp.desc()).all()
+        return [{
+            "rating": r.rating,
+            "review_text": r.review_text,
+            "customer_name": r.customer_name,
+            "timestamp": r.timestamp
+        } for r in reviews]
     except Exception as e:
         print(f"Database error in get_reviews: {e}")
         return []
