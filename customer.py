@@ -286,3 +286,60 @@ def generate_receipt_file(order):
         f.write("=========================================\n")
 
     return filename
+
+def add_review(item, rating, review_text, customer_name="Anonymous"):
+    """
+    Adds a review for a product.
+    """
+    item = item.strip().lower()
+    try:
+        conn = database.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM products WHERE name = ? AND archived = 0", (item,))
+        prod = cursor.fetchone()
+        if not prod:
+            conn.close()
+            return False, "Product does not exist"
+        
+        pid = prod['id']
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute(
+            "INSERT INTO reviews (product_id, rating, review_text, customer_name, timestamp) VALUES (?, ?, ?, ?, ?)",
+            (pid, rating, review_text, customer_name, timestamp)
+        )
+        conn.commit()
+        conn.close()
+        return True, "Review added successfully"
+    except Exception as e:
+        return False, f"Database error in add_review: {e}"
+
+def get_reviews(item):
+    """
+    Gets all reviews for a product.
+    """
+    item = item.strip().lower()
+    try:
+        conn = database.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM products WHERE name = ? AND archived = 0", (item,))
+        prod = cursor.fetchone()
+        if not prod:
+            conn.close()
+            return []
+        
+        pid = prod['id']
+        cursor.execute("SELECT rating, review_text, customer_name, timestamp FROM reviews WHERE product_id = ? ORDER BY timestamp DESC", (pid,))
+        rows = cursor.fetchall()
+        reviews = []
+        for row in rows:
+            reviews.append({
+                "rating": row['rating'],
+                "review_text": row['review_text'],
+                "customer_name": row['customer_name'],
+                "timestamp": row['timestamp']
+            })
+        conn.close()
+        return reviews
+    except Exception as e:
+        print(f"Database error in get_reviews: {e}")
+        return []

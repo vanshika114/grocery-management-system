@@ -244,6 +244,28 @@ def export_orders_csv():
     response.headers['Content-Disposition'] = 'attachment; filename=orders-export.csv'
     return response
 
+# --- Reviews API ---
+@app.route('/api/products/<item>/reviews', methods=['POST'])
+def add_review(item):
+    data = request.json
+    try:
+        rating = int(data.get('rating', 0))
+        if rating < 1 or rating > 5:
+            return jsonify({"success": False, "message": "Rating must be between 1 and 5"}), 400
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "message": "Invalid rating format"}), 400
+    
+    review_text = data.get('review_text', '')
+    customer_name = data.get('customer_name', 'Anonymous')
+    
+    success, message = customer.add_review(item, rating, review_text, customer_name)
+    return jsonify({"success": success, "message": message})
+
+@app.route('/api/products/<item>/reviews', methods=['GET'])
+def get_reviews(item):
+    reviews = customer.get_reviews(item)
+    return jsonify(reviews)
+
 # --- Search & Filter API ---
 @app.route('/api/products/filter', methods=['GET'])
 def search_products():
