@@ -76,6 +76,19 @@ def init_db():
         FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
     );
     """)
+
+    # Reviews table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS reviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id INTEGER NOT NULL,
+        rating INTEGER NOT NULL,
+        review_text TEXT,
+        customer_name TEXT,
+        timestamp TEXT NOT NULL,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+    );
+    """)
     
     conn.commit()
     conn.close()
@@ -87,10 +100,25 @@ def get_all_products():
     """
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT name, price, quantity, category, image_url FROM products WHERE archived = 0")
+    cursor.execute("""
+        SELECT p.name, p.price, p.quantity, p.category, p.image_url, 
+               COALESCE(AVG(r.rating), 0) as avg_rating, 
+               COUNT(r.id) as review_count
+        FROM products p 
+        LEFT JOIN reviews r ON p.id = r.product_id 
+        WHERE p.archived = 0
+        GROUP BY p.id, p.name, p.price, p.quantity, p.category, p.image_url
+    """)
     products = {}
     for row in cursor.fetchall():
-        products[row['name']] = [row['price'], row['quantity'], row['category'], row['image_url']]
+        products[row['name']] = [
+            row['price'], 
+            row['quantity'], 
+            row['category'], 
+            row['image_url'], 
+            round(row['avg_rating'], 1), 
+            row['review_count']
+        ]
     conn.close()
     return products
 

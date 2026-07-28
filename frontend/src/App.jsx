@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Store, ShoppingCart, Package, Plus, Trash2, Sparkles, Clock, Receipt, Search, ChevronRight, Leaf, Archive, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Store, ShoppingCart, Package, Plus, Trash2, Sparkles, Clock, Receipt, Search, ChevronRight, Leaf, Archive, RotateCcw, AlertTriangle, Star } from 'lucide-react';
 import UiverseButton from '@/components/UiverseButton';
 import ThemeToggle from '@/components/ThemeToggle';
 import NotFound from '@/pages/NotFound';
@@ -12,6 +12,7 @@ import ExportButton from '@/components/ui/ExportButton';
 import NotificationBell from '@/components/NotificationBell';
 import SearchBar from '@/components/SearchBar';
 import AnalyticsDashboard from '@/components/AnalyticsDashboard';
+import ProductReviewModal from '@/components/ProductReviewModal';
 
 const API_URL = 'http://127.0.0.1:5000/api';
 
@@ -58,6 +59,7 @@ export default function App() {
   const [archivedProducts, setArchivedProducts] = useState([]);
   const [showArchived, setShowArchived] = useState(false);
   const [actionToast, setActionToast] = useState(null); // { message, type: 'success'|'error' }
+  const [selectedReviewProduct, setSelectedReviewProduct] = useState(null);
 
   const loadData = async (showSkeleton = false) => {
     if (showSkeleton) setIsLoading(true);
@@ -353,7 +355,7 @@ export default function App() {
                       const [, , category = 'Other'] = inventory[item];
                       return selectedCategory === 'All' || category === selectedCategory;
                     }).map(item => {
-                      const [price, qty, category = 'Other', imageUrl = ''] = inventory[item];
+                      const [price, qty, category = 'Other', imageUrl = '', avgRating = 0, reviewCount = 0] = inventory[item];
                       return (
                         <div key={item} className="group relative border border-slate-200/60 dark:border-slate-700/60 rounded-2xl overflow-hidden bg-white dark:bg-slate-800/80 hover:border-violet-300 dark:hover:border-violet-600 hover:-translate-y-1 hover:shadow-lg hover:shadow-violet-100/50 dark:hover:shadow-violet-900/30 transition-all duration-400 flex flex-col">
                           
@@ -377,7 +379,19 @@ export default function App() {
 
                           <div className="p-5 flex flex-col flex-1">
                             <div className="font-bold text-slate-800 dark:text-slate-100 capitalize text-base mb-0.5 text-center">{item}</div>
-                            <div className="text-[11px] font-semibold uppercase tracking-wider text-violet-500 dark:text-violet-400 mb-4 text-center">{category}</div>
+                            <div className="text-[11px] font-semibold uppercase tracking-wider text-violet-500 dark:text-violet-400 mb-2 text-center">{category}</div>
+                            
+                            <div 
+                              className="flex justify-center items-center gap-1 mb-4 cursor-pointer hover:opacity-80 transition-opacity"
+                              onClick={() => setSelectedReviewProduct(item)}
+                              title="Click to view reviews"
+                            >
+                              <div className="flex items-center text-amber-500">
+                                <Star className="w-4 h-4 fill-current" />
+                                <span className="ml-1 text-sm font-semibold text-slate-700 dark:text-slate-200">{avgRating > 0 ? avgRating : 'New'}</span>
+                              </div>
+                              <span className="text-xs text-slate-400">({reviewCount})</span>
+                            </div>
                             
                             <div className="flex items-end justify-center gap-0.5 mb-4">
                               <span className="text-sm text-slate-400 mb-0.5 font-medium">$</span>
@@ -791,6 +805,14 @@ export default function App() {
           background: rgba(0, 0, 0, 0.15);
         }
       `}</style>
+      {selectedReviewProduct && (
+        <ProductReviewModal 
+          product={selectedReviewProduct} 
+          onClose={() => setSelectedReviewProduct(null)} 
+          API_URL={API_URL} 
+          onReviewAdded={loadData}
+        />
+      )}
     </div>
   );
 }
