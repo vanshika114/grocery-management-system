@@ -57,6 +57,13 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [sortOrder, setSortOrder] = useState('none'); // 'none' | 'asc' | 'desc'
   const [wishlist, setWishlist] = useState([]); // array of item names
+  const [recentlyViewed, setRecentlyViewed] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('recentlyViewed')) || [];
+    } catch {
+      return [];
+    }
+  });
   const [adminCategoryFilter, setAdminCategoryFilter] = useState('All');
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
   const [archivedProducts, setArchivedProducts] = useState([]);
@@ -119,7 +126,16 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
+  const trackRecentlyViewed = (item) => {
+    setRecentlyViewed(prev => {
+      const updated = [item, ...prev.filter(i => i !== item)].slice(0, 6);
+      localStorage.setItem('recentlyViewed', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   const addToCart = async (item) => {
+    trackRecentlyViewed(item);
     await fetch(`${API_URL}/cart`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -322,6 +338,30 @@ export default function App() {
                 </button>
               ))}
             </div>
+
+            {recentlyViewed.length > 0 && (
+              <div className="mb-8">
+                <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-2">
+                  <Clock className="w-4 h-4" /> Recently Viewed
+                </h3>
+                <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
+                  {recentlyViewed.filter(item => inventory[item]).map(item => {
+                    const [price, , category = 'Other'] = inventory[item];
+                    return (
+                      <button
+                        key={item}
+                        onClick={() => addToCart(item)}
+                        className="flex-shrink-0 w-32 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-left hover:border-violet-300 dark:hover:border-violet-600 hover:-translate-y-0.5 transition-all shadow-sm"
+                      >
+                        <div className="text-2xl mb-1 text-center">{CATEGORY_EMOJI[category] || '📦'}</div>
+                        <div className="text-xs font-semibold text-slate-700 dark:text-slate-200 capitalize truncate">{item}</div>
+                        <div className="text-xs text-violet-600 font-bold mt-0.5">${price}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="grid lg:grid-cols-3 gap-8">
               {/* Product Grid Panel */}
