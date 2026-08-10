@@ -28,6 +28,7 @@ const CATEGORY_EMOJI = {
   'Bakery': '🥖', 'Meat and Seafood': '🥩',
   'Frozen Foods': '🧊', 'Household': '🏠', 'Other': '📦'
 };
+const DELIVERY_ESTIMATE = '20–30 mins';
 
 // Resolves the current view from the URL hash
 const getViewFromHash = () => {
@@ -41,6 +42,7 @@ const getViewFromHash = () => {
 export default function App() {
   const [view, setView] = useState(getViewFromHash);
   const [inventory, setInventory] = useState({});
+  const [location, setLocation] = useState('Detecting location...');
   const [isLoading, setIsLoading] = useState(true);
   const [cart, setCart] = useState({});
   const [totalPrice, setTotalPrice] = useState(0);
@@ -57,6 +59,13 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [sortOrder, setSortOrder] = useState('none'); // 'none' | 'asc' | 'desc'
   const [wishlist, setWishlist] = useState([]); // array of item names
+  const [recentlyViewed, setRecentlyViewed] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('recentlyViewed')) || [];
+    } catch {
+      return [];
+    }
+  });
   const [adminCategoryFilter, setAdminCategoryFilter] = useState('All');
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
   const [archivedProducts, setArchivedProducts] = useState([]);
@@ -106,6 +115,26 @@ export default function App() {
     loadData(true);
   }, []);
 
+  useEffect(() => {
+  if (!navigator.geolocation) {
+    setLocation('Location unavailable');
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      try {
+        const { latitude, longitude } = pos.coords;
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`);
+        const data = await res.json();
+        setLocation(data.address?.city || data.address?.town || data.address?.suburb || 'Unknown location');
+      } catch {
+        setLocation('Location unavailable');
+      }
+    },
+    () => setLocation('Location access denied')
+  );
+}, []);
+
   // Fetch analytics whenever the admin view becomes active
   useEffect(() => {
     if (view === 'admin') loadAnalytics();
@@ -119,7 +148,16 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
+  const trackRecentlyViewed = (item) => {
+    setRecentlyViewed(prev => {
+      const updated = [item, ...prev.filter(i => i !== item)].slice(0, 6);
+      localStorage.setItem('recentlyViewed', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   const addToCart = async (item) => {
+    trackRecentlyViewed(item);
     await fetch(`${API_URL}/cart`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -128,9 +166,45 @@ export default function App() {
     loadData();
   };
 
+
   const copyOrderId = (id) => {
     navigator.clipboard.writeText(id);
     showToast('Order ID copied to clipboard', 'success');
+  };
+
+  const reorderItems = async (order) => {
+    const skipped = [];
+    let addedCount = 0;
+    for (const { item, qty } of order.items) {
+      if (!inventory[item]) {
+        skipped.push(item);
+        continue;
+      }
+      const availableStock = inventory[item][1];
+      const qtyToAdd = Math.min(qty, availableStock);
+      if (qtyToAdd <= 0) {
+        skipped.push(item);
+        continue;
+      }
+      const res = await fetch(`${API_URL}/cart`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item, qty: qtyToAdd })
+      });
+      const data = await res.json();
+      if (data.success) {
+        addedCount++;
+      } else {
+        skipped.push(item);
+      }
+    }
+    loadData();
+    if (skipped.length > 0) {
+      showToast(`${addedCount} item(s) added. Skipped: ${skipped.join(', ')}`, addedCount > 0 ? 'success' : 'error');
+    } else {
+      showToast(`${addedCount} item(s) added to cart`, 'success');
+    }
+
   };
 
   const toggleWishlist = (item) => {
@@ -250,7 +324,7 @@ export default function App() {
       {checkoutSuccess && (
         <div className="fixed top-6 right-6 z-50 bg-emerald-500 text-white px-6 py-4 rounded-2xl shadow-lg shadow-emerald-500/20 flex items-center gap-3 animate-bounce">
           <span className="text-xl">✓</span>
-          <span className="font-semibold">Order placed successfully!</span>
+          <span className="font-semibold">Order placed! Arriving in {DELIVERY_ESTIMATE}</span>
         </div>
       )}
 
@@ -274,7 +348,11 @@ export default function App() {
             <div className="w-10 h-10 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md shadow-violet-500/20">
               <Leaf className="w-5 h-5 text-white" strokeWidth={2.5} />
             </div>
+            <div className="flex flex-col"></div>
             Stock Smart
+            <span className="text-xs font-medium text-slate-400 flex items-center gap-1">
+              📍 {location}
+            </span>
           </div>
 
           {/* NEW: search bar, only makes sense on the Shop view */}
@@ -328,6 +406,30 @@ export default function App() {
               ))}
             </div>
 
+            {recentlyViewed.length > 0 && (
+              <div className="mb-8">
+                <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-2">
+                  <Clock className="w-4 h-4" /> Recently Viewed
+                </h3>
+                <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
+                  {recentlyViewed.filter(item => inventory[item]).map(item => {
+                    const [price, , category = 'Other'] = inventory[item];
+                    return (
+                      <button
+                        key={item}
+                        onClick={() => addToCart(item)}
+                        className="flex-shrink-0 w-32 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-left hover:border-violet-300 dark:hover:border-violet-600 hover:-translate-y-0.5 transition-all shadow-sm"
+                      >
+                        <div className="text-2xl mb-1 text-center">{CATEGORY_EMOJI[category] || '📦'}</div>
+                        <div className="text-xs font-semibold text-slate-700 dark:text-slate-200 capitalize truncate">{item}</div>
+                        <div className="text-xs text-violet-600 font-bold mt-0.5">${price}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="grid lg:grid-cols-3 gap-8">
               {/* Product Grid Panel */}
               <div className="lg:col-span-2 bg-white/60 dark:bg-slate-900/60 border border-slate-200/50 dark:border-slate-700/50 backdrop-blur-xl rounded-3xl p-8 shadow-sm">
@@ -359,7 +461,7 @@ export default function App() {
                 </div>
 
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+                <div id="product-grid" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
                   {isLoading ? (
                     [...Array(8)].map((_, i) => <ProductCardSkeleton key={i} />)
                   ) : Object.keys(inventory).length === 0 ? (
@@ -489,6 +591,12 @@ export default function App() {
                       <div className="text-slate-400 text-sm text-center py-10 flex flex-col items-center gap-3">
                         <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center text-2xl">🛒</div>
                         <p>Your cart is empty</p>
+                        <button
+                          onClick={() => document.getElementById('product-grid')?.scrollIntoView({ behavior: 'smooth' })}
+                          className="mt-1 px-4 py-2 rounded-xl bg-violet-50 text-violet-600 text-xs font-semibold hover:bg-violet-100 transition-colors"
+                        >
+                          Browse Products
+                        </button>
                       </div>
                     ) : (
                       Object.keys(cart).map(item => {
@@ -524,6 +632,10 @@ export default function App() {
                     <span className="text-xl font-extrabold text-violet-700">${totalPrice.toFixed(2)}</span>
                   </div>
                   
+                  <div className="text-xs text-slate-400 text-center mb-3">
+                    Estimated delivery: {DELIVERY_ESTIMATE}
+                  </div>
+
                   <UiverseButton className="w-full text-sm font-semibold h-12" disabled={Object.keys(cart).length === 0} onClick={handleCheckout}>
                     Checkout <ChevronRight className="w-4 h-4 ml-1" />
                   </UiverseButton>
@@ -556,6 +668,9 @@ export default function App() {
                           </button>
                         </div>
                         <div className="text-xs text-slate-400 font-medium">{order.timestamp}</div>
+                        <div className="text-xs font-medium text-slate-400 flex items-center gap-1 mt-0.5">
+                          🕒 {DELIVERY_ESTIMATE}
+                        </div>
                       </div>
                       <div className="flex-1 max-w-md">
                         <div className="text-sm text-slate-500 leading-relaxed">
@@ -565,6 +680,13 @@ export default function App() {
                       <div className="text-emerald-600 font-extrabold text-lg bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-100">
                         ${order.total.toFixed(2)}
                       </div>
+                      <button
+                        onClick={() => reorderItems(order)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-violet-200 text-xs font-semibold text-violet-600 hover:bg-violet-50"
+                      >
+                        <ShoppingCart className="w-3.5 h-3.5" />
+                        Reorder
+                      </button>
                       <button
                         onClick={() => downloadReceiptPdf(order)}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50"
