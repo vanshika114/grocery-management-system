@@ -128,6 +128,40 @@ export default function App() {
     loadData();
   };
 
+  const reorderItems = async (order) => {
+    const skipped = [];
+    let addedCount = 0;
+    for (const { item, qty } of order.items) {
+      if (!inventory[item]) {
+        skipped.push(item);
+        continue;
+      }
+      const availableStock = inventory[item][1];
+      const qtyToAdd = Math.min(qty, availableStock);
+      if (qtyToAdd <= 0) {
+        skipped.push(item);
+        continue;
+      }
+      const res = await fetch(`${API_URL}/cart`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item, qty: qtyToAdd })
+      });
+      const data = await res.json();
+      if (data.success) {
+        addedCount++;
+      } else {
+        skipped.push(item);
+      }
+    }
+    loadData();
+    if (skipped.length > 0) {
+      showToast(`${addedCount} item(s) added. Skipped: ${skipped.join(', ')}`, addedCount > 0 ? 'success' : 'error');
+    } else {
+      showToast(`${addedCount} item(s) added to cart`, 'success');
+    }
+  };
+
   const toggleWishlist = (item) => {
     setWishlist(prev =>
       prev.includes(item) ? prev.filter(i => i !== item) : [...prev, item]
@@ -553,6 +587,13 @@ export default function App() {
                       <div className="text-emerald-600 font-extrabold text-lg bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-100">
                         ${order.total.toFixed(2)}
                       </div>
+                      <button
+                        onClick={() => reorderItems(order)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-violet-200 text-xs font-semibold text-violet-600 hover:bg-violet-50"
+                      >
+                        <ShoppingCart className="w-3.5 h-3.5" />
+                        Reorder
+                      </button>
                       <button
                         onClick={() => downloadReceiptPdf(order)}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50"
