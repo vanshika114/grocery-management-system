@@ -28,6 +28,7 @@ const CATEGORY_EMOJI = {
   'Bakery': '🥖', 'Meat and Seafood': '🥩',
   'Frozen Foods': '🧊', 'Household': '🏠', 'Other': '📦'
 };
+const DELIVERY_ESTIMATE = '20–30 mins';
 
 // Resolves the current view from the URL hash
 const getViewFromHash = () => {
@@ -282,7 +283,7 @@ export default function App() {
       {checkoutSuccess && (
         <div className="fixed top-6 right-6 z-50 bg-emerald-500 text-white px-6 py-4 rounded-2xl shadow-lg shadow-emerald-500/20 flex items-center gap-3 animate-bounce">
           <span className="text-xl">✓</span>
-          <span className="font-semibold">Order placed successfully!</span>
+          <span className="font-semibold">Order placed! Arriving in {DELIVERY_ESTIMATE}</span>
         </div>
       )}
 
@@ -584,6 +585,10 @@ export default function App() {
                     <span className="text-xl font-extrabold text-violet-700">${totalPrice.toFixed(2)}</span>
                   </div>
                   
+                  <div className="text-xs text-slate-400 text-center mb-3">
+                    Estimated delivery: {DELIVERY_ESTIMATE}
+                  </div>
+
                   <UiverseButton className="w-full text-sm font-semibold h-12" disabled={Object.keys(cart).length === 0} onClick={handleCheckout}>
                     Checkout <ChevronRight className="w-4 h-4 ml-1" />
                   </UiverseButton>
@@ -609,6 +614,9 @@ export default function App() {
                           <span className="text-violet-600">#{order.id}</span>
                         </div>
                         <div className="text-xs text-slate-400 font-medium">{order.timestamp}</div>
+                        <div className="text-xs font-medium text-slate-400 flex items-center gap-1 mt-0.5">
+                          🕒 {DELIVERY_ESTIMATE}
+                        </div>
                       </div>
                       <div className="flex-1 max-w-md">
                         <div className="text-sm text-slate-500 leading-relaxed">
