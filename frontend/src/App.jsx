@@ -41,6 +41,7 @@ const getViewFromHash = () => {
 export default function App() {
   const [view, setView] = useState(getViewFromHash);
   const [inventory, setInventory] = useState({});
+  const [location, setLocation] = useState('Detecting location...');
   const [isLoading, setIsLoading] = useState(true);
   const [cart, setCart] = useState({});
   const [totalPrice, setTotalPrice] = useState(0);
@@ -105,6 +106,26 @@ export default function App() {
   useEffect(() => {
     loadData(true);
   }, []);
+
+  useEffect(() => {
+  if (!navigator.geolocation) {
+    setLocation('Location unavailable');
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      try {
+        const { latitude, longitude } = pos.coords;
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`);
+        const data = await res.json();
+        setLocation(data.address?.city || data.address?.town || data.address?.suburb || 'Unknown location');
+      } catch {
+        setLocation('Location unavailable');
+      }
+    },
+    () => setLocation('Location access denied')
+  );
+}, []);
 
   // Fetch analytics whenever the admin view becomes active
   useEffect(() => {
@@ -269,7 +290,11 @@ export default function App() {
             <div className="w-10 h-10 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md shadow-violet-500/20">
               <Leaf className="w-5 h-5 text-white" strokeWidth={2.5} />
             </div>
+            <div className="flex flex-col"></div>
             Stock Smart
+            <span className="text-xs font-medium text-slate-400 flex items-center gap-1">
+              📍 {location}
+            </span>
           </div>
 
           {/* NEW: search bar, only makes sense on the Shop view */}
