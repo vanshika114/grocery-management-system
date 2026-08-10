@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Store, ShoppingCart, Package, Plus, Trash2, Sparkles, Clock, Receipt, Search, ChevronRight, Leaf, Archive, RotateCcw, AlertTriangle, Download, Heart } from 'lucide-react';
+import { Store, ShoppingCart, Package, Plus, Trash2, Sparkles, Clock, Receipt, Search, ChevronRight, Leaf, Archive, RotateCcw, AlertTriangle, Download, Heart, Copy } from 'lucide-react';
 import UiverseButton from '@/components/UiverseButton';
 import ThemeToggle from '@/components/ThemeToggle';
 import NotFound from '@/pages/NotFound';
@@ -126,6 +126,11 @@ export default function App() {
       body: JSON.stringify({ item, qty: 1 })
     });
     loadData();
+  };
+
+  const copyOrderId = (id) => {
+    navigator.clipboard.writeText(id);
+    showToast('Order ID copied to clipboard', 'success');
   };
 
   const toggleWishlist = (item) => {
@@ -542,6 +547,13 @@ export default function App() {
                       <div>
                         <div className="font-bold text-slate-700 mb-0.5 flex items-center gap-2">
                           <span className="text-violet-600">#{order.id}</span>
+                          <button
+                            onClick={() => copyOrderId(order.id)}
+                            className="text-slate-300 hover:text-violet-600 transition-colors"
+                            title="Copy order ID"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                         <div className="text-xs text-slate-400 font-medium">{order.timestamp}</div>
                       </div>
