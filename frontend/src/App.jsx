@@ -354,7 +354,7 @@ export default function App() {
                 </div>
 
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+                <div id="product-grid" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
                   {isLoading ? (
                     [...Array(8)].map((_, i) => <ProductCardSkeleton key={i} />)
                   ) : Object.keys(inventory).length === 0 ? (
@@ -484,6 +484,12 @@ export default function App() {
                       <div className="text-slate-400 text-sm text-center py-10 flex flex-col items-center gap-3">
                         <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center text-2xl">🛒</div>
                         <p>Your cart is empty</p>
+                        <button
+                          onClick={() => document.getElementById('product-grid')?.scrollIntoView({ behavior: 'smooth' })}
+                          className="mt-1 px-4 py-2 rounded-xl bg-violet-50 text-violet-600 text-xs font-semibold hover:bg-violet-100 transition-colors"
+                        >
+                          Browse Products
+                        </button>
                       </div>
                     ) : (
                       Object.keys(cart).map(item => {
