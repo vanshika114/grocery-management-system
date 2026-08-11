@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Store, ShoppingCart, Package, Plus, Trash2, Sparkles, Clock, Receipt, Search, ChevronRight, Leaf, Archive, RotateCcw, AlertTriangle, Download, Heart } from 'lucide-react';
+import { Store, ShoppingCart, Package, Plus, Trash2, Sparkles, Clock, Receipt, Search, ChevronRight, Leaf, Archive, RotateCcw, AlertTriangle, Download, Heart, Copy } from 'lucide-react';
 import UiverseButton from '@/components/UiverseButton';
 import ThemeToggle from '@/components/ThemeToggle';
 import NotFound from '@/pages/NotFound';
@@ -166,6 +166,12 @@ export default function App() {
     loadData();
   };
 
+
+  const copyOrderId = (id) => {
+    navigator.clipboard.writeText(id);
+    showToast('Order ID copied to clipboard', 'success');
+  };
+
   const reorderItems = async (order) => {
     const skipped = [];
     let addedCount = 0;
@@ -198,6 +204,7 @@ export default function App() {
     } else {
       showToast(`${addedCount} item(s) added to cart`, 'success');
     }
+
   };
 
   const toggleWishlist = (item) => {
@@ -652,6 +659,13 @@ export default function App() {
                       <div>
                         <div className="font-bold text-slate-700 mb-0.5 flex items-center gap-2">
                           <span className="text-violet-600">#{order.id}</span>
+                          <button
+                            onClick={() => copyOrderId(order.id)}
+                            className="text-slate-300 hover:text-violet-600 transition-colors"
+                            title="Copy order ID"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                         <div className="text-xs text-slate-400 font-medium">{order.timestamp}</div>
                         <div className="text-xs font-medium text-slate-400 flex items-center gap-1 mt-0.5">
