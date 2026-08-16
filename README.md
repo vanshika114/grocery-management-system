@@ -1,6 +1,5 @@
 # Grocery Management System 🛒
 
-[![API Health](https://img.shields.io/badge/API-Health%20Check-brightgreen?style=flat-square)](http://127.0.0.1:5000/api/products)
 
 A web-based grocery management system with a **React (Vite)** frontend and a **Python (Flask)** REST API backend. It supports two perspectives — **Admin** and **Customer** — for managing inventory, browsing products, and handling billing/checkout.
 
@@ -134,10 +133,13 @@ Then open the local URL Vite prints in the terminal (usually `http://localhost:5
 
 ---
 
-## Contributing
+## Contributors 
 
-Issues and pull requests are welcome. Please open an issue first to discuss any significant change.
-
-## License
-
-No license specified yet — check with the repository owner before reuse.
+- @NeuralImprint
+- @sanket1035
+- @srushtilokhande12-web
+- @rohitkumarnaidu
+- @Keshavsspppp
+- @Shauriya
+- @Srushti005
+- @ShauriyaDeveloper1
